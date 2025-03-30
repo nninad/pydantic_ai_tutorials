@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import List, Dict, Any
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from pydantic import BaseModel, Field, SecretStr
@@ -39,6 +40,14 @@ class StockDetails(BaseModel):
     current_stock_price: float = Field(description="Current stock price of the company")
     v_52_week_high: float = Field(description="52 Week high stock price of the company")
     v_52_week_low: float = Field(description="52 week low stock price of the company")
+    company_news: List[CompanyNews] = Field(description="Latest news articles related to the company")
+
+class CompanyNews(BaseModel):
+    title: str = Field(description="Title of the news article")
+    Summary: str = Field(description="Summary of the news article")
+    source: str = Field(description="Source of the news article")
+    overall_sentiment: str = Field(description="Overall sentiment of the news article (Bearish, Somewhat-Bearish, Neutral, Somewhat_Bullish, Bullish)")
+    
 
 stock_market_agent = Agent(
     "google-gla:gemini-2.5-pro-exp-03-25", 
@@ -50,7 +59,8 @@ stock_market_agent = Agent(
         step 1: Use the `get_stock_ticker_symbol` tool to get the stock ticker symbol for the company, 
         step 2: Use the `get_current_stock_price` tool to fetch the current stock price of a given company, 
         step 3: Use the `get_company_overview_and_financials` tool to get company details and other financial data like sector, industry, market capitalization, stock exchange, 52 week high and low price. 
-        step 4: Use the information returned by these tools to provide the stock details about the company. 
+        step 4: Use the `get_company_news` tool to fetch the latest news about the company.
+        step 5: Use the information returned by these tools to provide the stock details about the company. 
         You must always provide the most accurate and up-to-date data using the above tools only. Do not fall back to generic knowledge or assumptions.""",
     retries=3,
 )
@@ -87,6 +97,7 @@ async def get_current_stock_price(ctx: RunContext[Deps], ticker: str) -> Dict[st
     # print(stock_price.text)
     return stock_price.text
 
+
 # Tool with run context
 @stock_market_agent.tool
 async def get_company_overview_and_financials(ctx: RunContext[Deps], ticker: str) -> Dict[str, Any]:
@@ -104,23 +115,56 @@ async def get_company_overview_and_financials(ctx: RunContext[Deps], ticker: str
     return company_overview.text
 
 
+# Tool with run context
+@stock_market_agent.tool
+async def get_company_news(ctx: RunContext[Deps], ticker: str) -> Dict[str, Any]:
+    """Get the latest news headlines for a given company.
+
+    Args:
+        ticker: Stock ticker symbol for a company
+    """
+
+    logfire.info(f"Get the latest news headlines for a given company from alphavantage: {ticker}")
+    
+    url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={ticker}&limit=5&sort=RELEVANCE&apikey={ctx.deps.alpha_vantage_api_key}"
+    company_news = requests.get(url)
+    # print(company_news.text)
+    return company_news.text
+
+    
 if __name__ == "__main__":
     alpha_vantage_api_key: SecretStr = os.getenv("ALPHA_VANTAGE_API_KEY")
     # Run the agent
     result = stock_market_agent.run_sync('Provide details about company Apple', deps=Deps(alpha_vantage_api_key=alpha_vantage_api_key))
-    # print(result.data)
-
-    # Create a console object
+    data = result.data
+    
+    # Initialize Console
     console = Console()
 
-    # Create a table
-    table = Table(title="Company Information", show_header=False)
-    table.add_column("Attribute", style="bold")
-    table.add_column("Value")
+    # Format Company Overview
+    company_info = f"""[bold]Company Overview of {data.company_name} ({data.ticker})[/bold]\n
+    [bold]Name:[/bold] {data.company_name}\n
+    [bold]Description:[/bold] {data.company_description}\n
+    [bold]Sector:[/bold] {data.sector}\n
+    [bold]Industry:[/bold] {data.industry}\n
+    [bold]Market Capitalization:[/bold] ${int(data.market_capitalization):,} billion\n
+    [bold]Current Stock Price:[/bold] ${data.current_stock_price:.2f}\n
+    [bold]52-Week High:[/bold] ${data.v_52_week_high:.2f}\n
+    [bold]52-Week Low:[/bold] ${data.v_52_week_low:.2f}\n
+    """
 
-    # Populate table with dictionary data
-    for key, value in result.data:
-        table.add_row(key, str(value))
+    console.print(Panel(company_info, expand=True))
 
-    # Print the table
-    console.print(table)
+    # Create a Table for News
+    news_table = Table(show_header=True, title=f"[bold]Latest News about {data.company_name} ({data.ticker})[/bold]")
+    news_table.add_column("Title")
+    news_table.add_column("Summary")
+    news_table.add_column("Sentiment")
+    news_table.add_column("Source")
+
+    # Populate News Table
+    for news in data.company_news:
+        news_table.add_row(news.title, news.Summary, news.overall_sentiment, news.source)
+
+    console.print(news_table)
+    
