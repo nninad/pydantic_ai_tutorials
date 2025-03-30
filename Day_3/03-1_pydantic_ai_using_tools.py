@@ -49,7 +49,7 @@ class CompanyNews(BaseModel):
     overall_sentiment: str = Field(description="Overall sentiment of the news article (Bearish, Somewhat-Bearish, Neutral, Somewhat_Bullish, Bullish)")
     
 
-stock_market_agent = Agent(
+market_research_agent = Agent(
     "google-gla:gemini-2.5-pro-exp-03-25", 
     model_settings={"temperature": 0},
     result_type=StockDetails,
@@ -67,7 +67,7 @@ stock_market_agent = Agent(
 
 
 # Tool without run context
-@stock_market_agent.tool_plain(retries=3)
+@market_research_agent.tool_plain(retries=3)
 async def get_stock_ticker_symbol(company_name: str) -> List[Dict[str, str]]:
     """Get Stock ticker symbol for a company
 
@@ -82,7 +82,7 @@ async def get_stock_ticker_symbol(company_name: str) -> List[Dict[str, str]]:
 
 
 # Tool with run context
-@stock_market_agent.tool
+@market_research_agent.tool
 async def get_current_stock_price(ctx: RunContext[Deps], ticker: str) -> Dict[str, Any]:
     """Fetch the current stock price of a given company
 
@@ -99,7 +99,7 @@ async def get_current_stock_price(ctx: RunContext[Deps], ticker: str) -> Dict[st
 
 
 # Tool with run context
-@stock_market_agent.tool
+@market_research_agent.tool
 async def get_company_overview_and_financials(ctx: RunContext[Deps], ticker: str) -> Dict[str, Any]:
     """Get company details and other financial data
 
@@ -116,7 +116,7 @@ async def get_company_overview_and_financials(ctx: RunContext[Deps], ticker: str
 
 
 # Tool with run context
-@stock_market_agent.tool
+@market_research_agent.tool
 async def get_company_news(ctx: RunContext[Deps], ticker: str) -> Dict[str, Any]:
     """Get the latest news headlines for a given company.
 
@@ -135,7 +135,7 @@ async def get_company_news(ctx: RunContext[Deps], ticker: str) -> Dict[str, Any]
 if __name__ == "__main__":
     alpha_vantage_api_key: SecretStr = os.getenv("ALPHA_VANTAGE_API_KEY")
     # Run the agent
-    result = stock_market_agent.run_sync('Provide details about company Apple', deps=Deps(alpha_vantage_api_key=alpha_vantage_api_key))
+    result = market_research_agent.run_sync('Provide details about company Apple', deps=Deps(alpha_vantage_api_key=alpha_vantage_api_key))
     data = result.data
     
     # Initialize Console
@@ -167,4 +167,3 @@ if __name__ == "__main__":
         news_table.add_row(news.title, news.Summary, news.overall_sentiment, news.source)
 
     console.print(news_table)
-    
